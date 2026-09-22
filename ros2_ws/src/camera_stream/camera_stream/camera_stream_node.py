@@ -1,10 +1,12 @@
 #minimal camera feed streamer using libcamera's gstreamer plugin
 #This node streams live camera feed over TCP to a remote device by constructing a GStreamer pipeline using the command line
 
-#TODO; implement h264 encoding, create an RTP payload and stream over UDP
+#TODO: implement h264 encoding, create an RTP payload and stream over UDP
 
 
 #TODO: configure separate pipelines from a single source for snapshot and recording capabilties
+
+#running this requires the environment variable GST_PLUGIN_PATH to point to the libcamera GStreamer plugin installation directory.
 
 
 import rclpy
