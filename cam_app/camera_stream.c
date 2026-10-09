@@ -21,8 +21,10 @@ GstBus *bus = NULL;
 typedef struct {
 	GstElement *pipeline;
 	GstBus *bus;
-	GstStructure *structure;
-	GstMessage *message;
+	GstStructure *toggle_structure;
+	GstStructure *snapshot_structure;
+	GstMessage *toggle_message;
+	GstMessage *snapshot_message;
 	struct gpiod_line_request *request;
 } CustomData;
 
@@ -33,6 +35,7 @@ static GstFlowReturn new_sample(GstElement *sink, void *data)
 
 	g_signal_emit_by_name(sink, "pull-sample", &sample);
 	if (sample) {
+		g_print("*");
 		gst_sample_unref(sample);
 		return GST_FLOW_OK;
 	}
@@ -40,42 +43,14 @@ static GstFlowReturn new_sample(GstElement *sink, void *data)
 	return GST_FLOW_FLUSHING;
 }
 
-static gboolean on_gpio_edge_event(gint fd, GIOCondition condition, gpointer user_data) 
-{
-	struct gpiod_edge_event_buffer *buffer = (struct gpiod_edge_event_buffer *)user_data;
-
-	int ret = gpiod_line_request_read_edge_events(gpio_req, buffer, 16);
-	if (ret > 0) {
-		for (int i = 0; i < ret; ++i) {
-			struct gpiod_edge_event *event = gpiod_edge_event_buffer_get_event(buffer, i);
-			int type = gpiod_edge_event_get_event_type(event);
-
-			if (type == GPIOD_EDGE_EVENT_FALLING_EDGE) {
-				enabled = !enabled;
-				g_print("button pressed, pulling low. set enable to %s\n", enabled ? "true" : "false");
-			}
-		}
-	}
-	
-	return G_SOURCE_CONTINUE;
-}
-
 void *gpio_thread(void *arg) 
 {
 
 	g_print("thread started.\n");
 
-	//struct gpiod_edge_event_buffer *buffer = (struct gpiod_edge_event_buffer *)user_data;
-	//struct gpiod_line_request *request = arg;
 	CustomData *data = (CustomData *)arg;
 	struct gpiod_edge_event_buffer *buffer = gpiod_edge_event_buffer_new(16);
-	
-	//GstStructure *structure;
-	
-	
-	//structure = gst_structure_new("test_struct", "test", G_TYPE_BOOLEAN, TRUE, NULL);
-	
-	//message = gst_message_new_application(GST_OBJECT(data->pipeline), structure);
+	data->toggle_structure = gst_structure_new_empty("toggle_struct");
 
 	while (1) {
 	int ret = gpiod_line_request_read_edge_events(data->request, buffer, 16);
@@ -89,15 +64,26 @@ void *gpio_thread(void *arg)
 
 			if (type == GPIOD_EDGE_EVENT_FALLING_EDGE) {
 				g_print("button pressed, pulling line %d low. \n", offset);
-				//data->message = gst_message_new_application(GST_OBJECT(data->pipeline), data->structure);
-				gst_bus_post(bus, data->message);
-				//gst_message_unref(data->message);
-				gst_object_unref(bus);
+				switch (offset) {
+					case TOGGLE_STREAM_LINE:
+						g_print("toggling stream, posting application message to bus.\n");
+						gst_bus_post(bus, gst_message_new_application(GST_OBJECT(data->pipeline), data->toggle_structure));
+						gst_object_unref(bus);
+						break;
+					case REQ_SNAPSHOT_LINE:
+						g_print("requesting snapshot, posting application message to bus.\n");
+						gst_bus_post(bus, gst_message_new_application(GST_OBJECT(data->pipeline), data->snapshot_structure));
+						gst_object_unref(bus);
+						break;
+					default:
+						break;
+				}
 			}
 		}
 	}
 	}
 }
+
 
 int main(int argc, char *argv[])
 {
@@ -121,15 +107,7 @@ int main(int argc, char *argv[])
 
     data.request = gpiod_chip_request_lines(chip, req_cfg, line_cfg);
 
-    GMainLoop *main_loop = g_main_loop_new(NULL, FALSE);
-
-    int gpio_fd = gpiod_line_request_get_fd(data.request);
-
-    g_unix_fd_add(gpio_fd, G_IO_IN, on_gpio_edge_event, buffer);
-
     pthread_t thread1;
-
-    //pthread_join(thread1, NULL);
 
     data.pipeline = gst_pipeline_new("cam");
     GstElement *src = gst_element_factory_make("libcamerasrc", NULL);
@@ -139,7 +117,7 @@ int main(int argc, char *argv[])
     GstElement *stream_q = gst_element_factory_make("queue", NULL);
     GstElement *snapshot_q = gst_element_factory_make("queue", NULL);
     GstElement *stream_enc = gst_element_factory_make("x264enc", NULL);
-    GstElement *snapshot_enc = gst_element_factory_make("pngenc", NULL);
+    GstElement *snapshot_enc = gst_element_factory_make("jpegenc", NULL);
     GstElement *payloader = gst_element_factory_make("rtph264pay", NULL);
     GstElement *stream_sink  = gst_element_factory_make("udpsink", NULL);
     GstElement *snapshot_sink = gst_element_factory_make("appsink", NULL);
@@ -149,8 +127,8 @@ int main(int argc, char *argv[])
     GstPad *tee_stream_pad, *tee_snapshot_pad;
     GstPad *stream_q_pad, *snapshot_q_pad;
 
-    data.structure = gst_structure_new("test_struct", "test", G_TYPE_BOOLEAN, TRUE, NULL);
-    data.message = gst_message_new_application(GST_OBJECT(data.pipeline), data.structure);
+    //data.toggle_structure = gst_structure_new_empty("toggle_stream");
+    data.snapshot_structure = gst_structure_new_empty("request_snapshot");
 
     if (!data.pipeline || !src || !tee || !stream_filt || !snapshot_filt || !convert || !stream_q || !snapshot_q || !stream_enc || !snapshot_enc || !payloader || !stream_sink || !snapshot_sink) {
 	    g_printerr("Not all elements could be created.\n");
@@ -170,14 +148,14 @@ int main(int argc, char *argv[])
 
     g_object_set(stream_enc,  "tune", 0x00000004, "speed-preset", 1, NULL);
     g_object_set(stream_sink, "host", "192.168.50.10", "port", 5000, "sync", FALSE, NULL);
-    g_object_set(snapshot_enc, "snapshot", 0, NULL);
+    g_object_set(snapshot_enc, "snapshot", false, NULL);
     //g_object_set(snapshot_sink, "location", "snapshot_test.png", NULL);
     g_object_set(snapshot_sink, "max-buffers", 0, "emit-signals", TRUE, NULL);
     g_signal_connect(snapshot_sink, "new-sample", G_CALLBACK(new_sample), NULL);
 
-    gst_bin_add_many(GST_BIN(data.pipeline), src, stream_filt, tee, stream_q, stream_enc, payloader, stream_sink, snapshot_q, snapshot_sink, NULL);
+    gst_bin_add_many(GST_BIN(data.pipeline), src, stream_filt, tee, stream_q, stream_enc, payloader, stream_sink, snapshot_q, snapshot_enc, snapshot_sink, NULL);
     if (!gst_element_link_many(src, stream_filt, tee, NULL) || !gst_element_link_many(stream_q, stream_enc, payloader, stream_sink, NULL) 
-		   || !gst_element_link_many(snapshot_q, snapshot_sink, NULL)) {
+		   || !gst_element_link_many(snapshot_q, snapshot_enc, snapshot_sink, NULL)) {
         g_printerr("link failed\n");
 	gst_object_unref(data.pipeline);
         return 1;
@@ -213,7 +191,7 @@ int main(int argc, char *argv[])
     pthread_create(&thread1, NULL, gpio_thread, &data);
 
 	 do { 
-		 msg = gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE,
+		 msg = gst_bus_timed_pop_filtered(bus, 100 * GST_MSECOND,
                                                  GST_MESSAGE_ERROR | GST_MESSAGE_EOS | GST_MESSAGE_APPLICATION);
 
 
@@ -235,30 +213,30 @@ int main(int argc, char *argv[])
 				break;
 			case GST_MESSAGE_APPLICATION:
 				g_print("received msg from application\n");
-				GstState current_state;
+				GstState current_state; 			
 				gst_element_get_state(GST_ELEMENT(data.pipeline), &current_state, NULL, 0);
 				const gchar *state_name = gst_element_state_get_name(current_state);
-				if (current_state != 4) {
-					gst_element_set_state(data.pipeline, GST_STATE_PLAYING);
-					g_print("set set to PLAYING.\n");
-				} else { 
-					gst_element_set_state(data.pipeline, GST_STATE_PAUSED);
-					g_print("setting current state to PAUSED.\n");
-				}
+				Gststructure *s;
+					/*if (current_state != 4) {
+						gst_element_set_state(data.pipeline, GST_STATE_PLAYING);
+						g_print("setting current state to PLAYING.\n");
+					} else { 
+						gst_element_set_state(data.pipeline, GST_STATE_PAUSED);
+						g_print("setting current state to PAUSED.\n");
+					}*/
 				break;
 			default:
 				g_print("Message Type: %d\n", GST_MESSAGE_TYPE(msg));
 				break;
 		 }
-		 GstState current_state;
-		 gst_element_get_state(GST_ELEMENT(data.pipeline), &current_state, NULL, 0);
-		 const gchar *state_name = gst_element_state_get_name(current_state);
+		 //gst_element_get_state(GST_ELEMENT(data.pipeline), &current_state, NULL, 0);
 		 //gst_element_set_state(pipeline, GST_STATE_PLAYING);
 		 //gst_message_unref(data.message);
 	 }
 	 } while (enabled);
 				
-    gst_object_unref(data.message);
+    gst_object_unref(data.toggle_message);
+    gst_object_unref(data.snapshot_message);
     gst_object_unref(bus);
     gst_element_release_request_pad(tee, tee_stream_pad);
     gst_element_release_request_pad(tee, tee_snapshot_pad);
@@ -267,8 +245,6 @@ int main(int argc, char *argv[])
     gst_element_set_state(data.pipeline, GST_STATE_NULL);
     gst_object_unref(data.pipeline);
    
-    
-    g_main_loop_unref(main_loop);
     gpiod_line_request_release(gpio_req);
     return 0;
 }
