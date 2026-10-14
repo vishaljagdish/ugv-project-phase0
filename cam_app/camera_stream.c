@@ -21,10 +21,7 @@ GstBus *bus = NULL;
 typedef struct {
 	GstElement *pipeline;
 	GstBus *bus;
-	GstStructure *toggle_structure;
-	GstStructure *snapshot_structure;
-	GstMessage *toggle_message;
-	GstMessage *snapshot_message;
+	GstMessage *app_msg;
 	struct gpiod_line_request *request;
 } CustomData;
 
@@ -50,7 +47,6 @@ void *gpio_thread(void *arg)
 
 	CustomData *data = (CustomData *)arg;
 	struct gpiod_edge_event_buffer *buffer = gpiod_edge_event_buffer_new(16);
-	data->toggle_structure = gst_structure_new_empty("toggle_struct");
 
 	while (1) {
 	int ret = gpiod_line_request_read_edge_events(data->request, buffer, 16);
@@ -66,13 +62,17 @@ void *gpio_thread(void *arg)
 				g_print("button pressed, pulling line %d low. \n", offset);
 				switch (offset) {
 					case TOGGLE_STREAM_LINE:
+						GstStructure *toggle_struct = gst_structure_new_empty("toggle_stream");
+						data->app_msg = gst_message_new_application(GST_OBJECT(data->pipeline), toggle_struct);
 						g_print("toggling stream, posting application message to bus.\n");
-						gst_bus_post(bus, gst_message_new_application(GST_OBJECT(data->pipeline), data->toggle_structure));
+						gst_bus_post(bus, data->app_msg);
 						gst_object_unref(bus);
 						break;
 					case REQ_SNAPSHOT_LINE:
+						GstStructure *snapshot_struct = gst_structure_new_empty("request_snapshot");
+						data->app_msg = gst_message_new_application(GST_OBJECT(data->pipeline), snapshot_struct);
 						g_print("requesting snapshot, posting application message to bus.\n");
-						gst_bus_post(bus, gst_message_new_application(GST_OBJECT(data->pipeline), data->snapshot_structure));
+						gst_bus_post(bus, data->app_msg);
 						gst_object_unref(bus);
 						break;
 					default:
@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
     GstPad *stream_q_pad, *snapshot_q_pad;
 
     //data.toggle_structure = gst_structure_new_empty("toggle_stream");
-    data.snapshot_structure = gst_structure_new_empty("request_snapshot");
+    //data.snapshot_structure = gst_structure_new_empty("request_snapshot");
 
     if (!data.pipeline || !src || !tee || !stream_filt || !snapshot_filt || !convert || !stream_q || !snapshot_q || !stream_enc || !snapshot_enc || !payloader || !stream_sink || !snapshot_sink) {
 	    g_printerr("Not all elements could be created.\n");
@@ -216,14 +216,25 @@ int main(int argc, char *argv[])
 				GstState current_state; 			
 				gst_element_get_state(GST_ELEMENT(data.pipeline), &current_state, NULL, 0);
 				const gchar *state_name = gst_element_state_get_name(current_state);
-				Gststructure *s;
-					/*if (current_state != 4) {
+				const GstStructure *s;
+				s = gst_message_get_structure(data.app_msg);
+				g_print("received message: %s\n", gst_structure_get_name(s));
+				if (gst_structure_has_name(s, "toggle_stream")) {
+					if (current_state != GST_STATE_PLAYING) {
 						gst_element_set_state(data.pipeline, GST_STATE_PLAYING);
 						g_print("setting current state to PLAYING.\n");
 					} else { 
 						gst_element_set_state(data.pipeline, GST_STATE_PAUSED);
 						g_print("setting current state to PAUSED.\n");
-					}*/
+					}
+				} else {
+					if (current_state != GST_STATE_PLAYING) {
+						g_print("cannot capture screenshot, livestream not running!\n");
+					} else {
+						g_print("capturing snapshot...\n");
+					}
+				}
+				gst_message_unref(data.app_msg);
 				break;
 			default:
 				g_print("Message Type: %d\n", GST_MESSAGE_TYPE(msg));
@@ -231,12 +242,12 @@ int main(int argc, char *argv[])
 		 }
 		 //gst_element_get_state(GST_ELEMENT(data.pipeline), &current_state, NULL, 0);
 		 //gst_element_set_state(pipeline, GST_STATE_PLAYING);
-		 //gst_message_unref(data.message);
+		 //gst_message_unref(data.toggle_msg);
 	 }
 	 } while (enabled);
 				
-    gst_object_unref(data.toggle_message);
-    gst_object_unref(data.snapshot_message);
+    //gst_object_unref(data.toggle_message);
+    //gst_object_unref(data.snapshot_message);
     gst_object_unref(bus);
     gst_element_release_request_pad(tee, tee_stream_pad);
     gst_element_release_request_pad(tee, tee_snapshot_pad);
