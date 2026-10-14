@@ -1,22 +1,17 @@
 #include <gst/gst.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <gpiod.h>
-#include <glib.h>
-#include <glib-unix.h>
 #include <pthread.h>
 
 #define TOGGLE_STREAM_LINE 16
 #define REQ_SNAPSHOT_LINE 21
 
 struct gpiod_line_request *gpio_req = NULL;
-//struct gpiod_edge_event_buffer *buffer = NULL;
-bool test = false;
 bool enabled = true;
-const char* flag = "enable";
-const char* test_flag = "test";
 GstBus *bus = NULL;
+const char* filename = "test.jpeg";
+FILE *fp;
 
 typedef struct {
 	GstElement *pipeline;
@@ -32,7 +27,7 @@ static GstFlowReturn new_sample(GstElement *sink, void *data)
 
 	g_signal_emit_by_name(sink, "pull-sample", &sample);
 	if (sample) {
-		g_print("*");
+		g_print("size: %zu\n", gst_buffer_get_size(gst_sample_get_buffer(sample)));
 		gst_sample_unref(sample);
 		return GST_FLOW_OK;
 	}
@@ -151,11 +146,11 @@ int main(int argc, char *argv[])
     g_object_set(snapshot_enc, "snapshot", false, NULL);
     //g_object_set(snapshot_sink, "location", "snapshot_test.png", NULL);
     g_object_set(snapshot_sink, "max-buffers", 0, "emit-signals", TRUE, NULL);
-    g_signal_connect(snapshot_sink, "new-sample", G_CALLBACK(new_sample), NULL);
+    //g_signal_connect(snapshot_sink, "new-sample", G_CALLBACK(new_sample), NULL);
 
-    gst_bin_add_many(GST_BIN(data.pipeline), src, stream_filt, tee, stream_q, stream_enc, payloader, stream_sink, snapshot_q, snapshot_enc, snapshot_sink, NULL);
+    gst_bin_add_many(GST_BIN(data.pipeline), src, stream_filt, tee, stream_q, stream_enc, payloader, stream_sink, snapshot_q, convert, snapshot_enc, snapshot_sink, NULL);
     if (!gst_element_link_many(src, stream_filt, tee, NULL) || !gst_element_link_many(stream_q, stream_enc, payloader, stream_sink, NULL) 
-		   || !gst_element_link_many(snapshot_q, snapshot_enc, snapshot_sink, NULL)) {
+		   || !gst_element_link_many(snapshot_q, convert, snapshot_enc, snapshot_sink, NULL)) {
         g_printerr("link failed\n");
 	gst_object_unref(data.pipeline);
         return 1;
@@ -181,9 +176,6 @@ int main(int argc, char *argv[])
 
     gst_object_unref(stream_q_pad);
     gst_object_unref(snapshot_q_pad);
-
-    //g_main_loop_run(main_loop);
-    //pthread_create(&thread1, NULL, gpio_thread, &data);
 
     //gst_element_set_state(data.pipeline, GST_STATE_PLAYING);
     /* Block until an error or end-of-stream */
@@ -232,6 +224,26 @@ int main(int argc, char *argv[])
 						g_print("cannot capture screenshot, livestream not running!\n");
 					} else {
 						g_print("capturing snapshot...\n");
+						GstSample *sample;
+						GstBuffer *buf;
+						g_signal_emit_by_name(snapshot_sink, "pull-sample", &sample);
+
+						if (sample) {
+							buf = gst_sample_get_buffer(sample);
+							g_print("size of buffer: %zu bytes.\n", gst_buffer_get_size(buf));
+							GstMapInfo map_info;
+							gst_buffer_map(buf, &map_info, GST_MAP_READ);
+							fp = fopen("test.jpeg", "wb");
+							if (fp == NULL) {
+								g_printerr("Error opening file.");
+							}
+							size_t written = fwrite(map_info.data, map_info.size, 1, fp);
+							g_print("captured screenshot, file size: %zu bytes.\n", map_info.size);
+							fclose(fp);
+							gst_buffer_unmap(buf, &map_info);
+							gst_sample_unref(sample);
+						}
+
 					}
 				}
 				gst_message_unref(data.app_msg);
