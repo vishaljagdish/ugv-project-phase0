@@ -1,5 +1,7 @@
+//Minimal Camera Livestreaming app for rover, pure C app
+//Author: Vishal Jagdish
+
 #include <gst/gst.h>
-#include <gst/app/gstappsink.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <gpiod.h>
