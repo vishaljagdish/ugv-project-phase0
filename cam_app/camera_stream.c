@@ -1,4 +1,5 @@
 #include <gst/gst.h>
+#include <gst/app/gstappsink.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <gpiod.h>
@@ -7,49 +8,68 @@
 #define TOGGLE_STREAM_LINE 16
 #define REQ_SNAPSHOT_LINE 21
 
+//initialize global variables
 struct gpiod_line_request *gpio_req = NULL;
 bool enabled = true;
 GstBus *bus = NULL;
-const char* filename = "test.jpeg";
+char filename[100];
 FILE *fp;
 
+//custom data structure to pass values to functions
 typedef struct {
 	GstElement *pipeline;
 	GstBus *bus;
 	GstMessage *app_msg;
+	struct gpiod_edge_event_buffer *edge_event_buffer;
 	struct gpiod_line_request *request;
 } CustomData;
 
-static GstFlowReturn new_sample(GstElement *sink, void *data)
+//function to write JPEG encoded bytes to file
+int handle_snapshot_request(GstBuffer *buffer)
 {
-	GstSample *sample;
-	GstBuffer *buffer;
-
-	g_signal_emit_by_name(sink, "pull-sample", &sample);
-	if (sample) {
-		g_print("size: %zu\n", gst_buffer_get_size(gst_sample_get_buffer(sample)));
-		gst_sample_unref(sample);
-		return GST_FLOW_OK;
+	if (buffer == NULL) {
+		g_printerr("cannot capture screenshot, image data unavailable!\n");
+		return -1;
 	}
 
-	return GST_FLOW_FLUSHING;
+	time_t now = time(NULL);
+	struct tm *t = localtime(&now);
+	GstMapInfo map_info;
+
+	int cx = snprintf(filename, 100, "images/capture_%d_%d_%d_%dH%dM%dS.jpeg", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+
+	if (cx > 100) {
+		g_print("warning: file output truncated.\n");
+	}
+
+	gst_buffer_map(buffer, &map_info, GST_MAP_READ); //this is how we access the actual image data
+	fp = fopen(filename, "wb");
+	if (fp == NULL) {
+		g_printerr("could not open file, aborting...\n");
+		return -1;
+	}
+	fwrite(map_info.data, map_info.size, 1, fp);
+	fclose(fp);
+	g_print("snapshot capture success. file size %zu bytes.\n", map_info.size);
+	gst_buffer_unmap(buffer, &map_info);
+
+	return 0;
 }
 
-void *gpio_thread(void *arg) 
+void *gpio_thread(void *arg) //gpio edge event handling is done in a separate thread
 {
 
 	g_print("thread started.\n");
 
-	CustomData *data = (CustomData *)arg;
-	struct gpiod_edge_event_buffer *buffer = gpiod_edge_event_buffer_new(16);
+	CustomData *data = (CustomData *)arg; //this line tells the function to treat arg as a pointer to a CustomData object
+	data->edge_event_buffer = gpiod_edge_event_buffer_new(16);
 
-	while (1) {
-	int ret = gpiod_line_request_read_edge_events(data->request, buffer, 16);
+	while (1) { //this loop handles falling edge events (input pullup enabled)
+	int ret = gpiod_line_request_read_edge_events(data->request, data->edge_event_buffer, 16);
 	if (ret > 0) {
-		//message = gst_message_new_application(GST_OBJECT(data->pipeline), structure);
 		bus = gst_pipeline_get_bus((GstPipeline *)data->pipeline);
 		for (int i = 0; i < ret; ++i) {
-			struct gpiod_edge_event *event = gpiod_edge_event_buffer_get_event(buffer, i);
+			struct gpiod_edge_event *event = gpiod_edge_event_buffer_get_event(data->edge_event_buffer, i);
 			int type = gpiod_edge_event_get_event_type(event);
 			unsigned int offset = gpiod_edge_event_get_line_offset(event);
 
@@ -108,7 +128,6 @@ int main(int argc, char *argv[])
     GstElement *src = gst_element_factory_make("libcamerasrc", NULL);
     GstElement *tee = gst_element_factory_make("tee", NULL);
     GstElement *stream_filt = gst_element_factory_make("capsfilter", NULL);
-    GstElement *snapshot_filt = gst_element_factory_make("capsfilter", NULL);
     GstElement *stream_q = gst_element_factory_make("queue", NULL);
     GstElement *snapshot_q = gst_element_factory_make("queue", NULL);
     GstElement *stream_enc = gst_element_factory_make("x264enc", NULL);
@@ -118,35 +137,27 @@ int main(int argc, char *argv[])
     GstElement *snapshot_sink = gst_element_factory_make("appsink", NULL);
     GstElement *convert = gst_element_factory_make("videoconvert", NULL);
     GstMessage *msg;
-    //GstBus *bus;
     GstPad *tee_stream_pad, *tee_snapshot_pad;
     GstPad *stream_q_pad, *snapshot_q_pad;
 
-    //data.toggle_structure = gst_structure_new_empty("toggle_stream");
-    //data.snapshot_structure = gst_structure_new_empty("request_snapshot");
 
-    if (!data.pipeline || !src || !tee || !stream_filt || !snapshot_filt || !convert || !stream_q || !snapshot_q || !stream_enc || !snapshot_enc || !payloader || !stream_sink || !snapshot_sink) {
+    if (!data.pipeline || !src || !tee || !stream_filt || !convert || !stream_q || !snapshot_q || !stream_enc || !snapshot_enc || !payloader || !stream_sink || !snapshot_sink) {
 	    g_printerr("Not all elements could be created.\n");
 	    return -1;
     }
 
+    //stream resolution, framerate and format are set through a capabilities filter
     GstCaps *stream_caps = gst_caps_from_string(
         "video/x-raw,format=NV12,width=800,height=600,framerate=30/1");
-    GstCaps *snapshot_caps = gst_caps_from_string(
-		   "video/x-raw,format=RGB,width=800,height=600");
 
     g_object_set(stream_filt, "caps", stream_caps, NULL);
-    g_object_set(snapshot_filt, "caps", snapshot_caps, NULL);
 
     gst_caps_unref(stream_caps);
-    gst_caps_unref(snapshot_caps);
 
     g_object_set(stream_enc,  "tune", 0x00000004, "speed-preset", 1, NULL);
     g_object_set(stream_sink, "host", "192.168.50.10", "port", 5000, "sync", FALSE, NULL);
-    g_object_set(snapshot_enc, "snapshot", false, NULL);
-    //g_object_set(snapshot_sink, "location", "snapshot_test.png", NULL);
-    g_object_set(snapshot_sink, "max-buffers", 0, "emit-signals", TRUE, NULL);
-    //g_signal_connect(snapshot_sink, "new-sample", G_CALLBACK(new_sample), NULL);
+    g_object_set(snapshot_enc, "snapshot", false, NULL); //snapshot = true triggers EOS which we dont want
+    g_object_set(snapshot_sink, "max-buffers", 0, "emit-signals", TRUE,  "drop", TRUE, NULL); //max-buffers = 0 means unlimited buffers
 
     gst_bin_add_many(GST_BIN(data.pipeline), src, stream_filt, tee, stream_q, stream_enc, payloader, stream_sink, snapshot_q, convert, snapshot_enc, snapshot_sink, NULL);
     if (!gst_element_link_many(src, stream_filt, tee, NULL) || !gst_element_link_many(stream_q, stream_enc, payloader, stream_sink, NULL) 
@@ -156,6 +167,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    //tees contain request pads which require manual linking
     tee_stream_pad = gst_element_request_pad_simple(tee, "src_%u");
     g_print("Obtained request pad %s for stream branch.\n", gst_pad_get_name(tee_stream_pad));
     stream_q_pad = gst_element_get_static_pad(stream_q, "sink");
@@ -177,9 +189,10 @@ int main(int argc, char *argv[])
     gst_object_unref(stream_q_pad);
     gst_object_unref(snapshot_q_pad);
 
-    //gst_element_set_state(data.pipeline, GST_STATE_PLAYING);
     /* Block until an error or end-of-stream */
     bus = gst_element_get_bus(data.pipeline);
+
+    //create gpio event handler thread
     pthread_create(&thread1, NULL, gpio_thread, &data);
 
 	 do { 
@@ -201,9 +214,8 @@ int main(int argc, char *argv[])
 				break;
 			case GST_MESSAGE_EOS:
 				g_print("end-of-stream-triggered by: %s\n", GST_OBJECT_NAME(msg->src));
-				//gst_element_set_state(pipeline, GST_STATE_PLAYING);
 				break;
-			case GST_MESSAGE_APPLICATION:
+			case GST_MESSAGE_APPLICATION: //main app logic
 				g_print("received msg from application\n");
 				GstState current_state; 			
 				gst_element_get_state(GST_ELEMENT(data.pipeline), &current_state, NULL, 0);
@@ -224,23 +236,13 @@ int main(int argc, char *argv[])
 						g_print("cannot capture screenshot, livestream not running!\n");
 					} else {
 						g_print("capturing snapshot...\n");
-						GstSample *sample;
+						GstSample *sample = NULL;
 						GstBuffer *buf;
-						g_signal_emit_by_name(snapshot_sink, "pull-sample", &sample);
+						g_object_get(snapshot_sink, "last-sample", &sample, NULL);
 
 						if (sample) {
 							buf = gst_sample_get_buffer(sample);
-							g_print("size of buffer: %zu bytes.\n", gst_buffer_get_size(buf));
-							GstMapInfo map_info;
-							gst_buffer_map(buf, &map_info, GST_MAP_READ);
-							fp = fopen("test.jpeg", "wb");
-							if (fp == NULL) {
-								g_printerr("Error opening file.");
-							}
-							size_t written = fwrite(map_info.data, map_info.size, 1, fp);
-							g_print("captured screenshot, file size: %zu bytes.\n", map_info.size);
-							fclose(fp);
-							gst_buffer_unmap(buf, &map_info);
+							handle_snapshot_request(buf);
 							gst_sample_unref(sample);
 						}
 
@@ -248,18 +250,14 @@ int main(int argc, char *argv[])
 				}
 				gst_message_unref(data.app_msg);
 				break;
-			default:
+			default: //default case should never be reached
 				g_print("Message Type: %d\n", GST_MESSAGE_TYPE(msg));
 				break;
 		 }
-		 //gst_element_get_state(GST_ELEMENT(data.pipeline), &current_state, NULL, 0);
-		 //gst_element_set_state(pipeline, GST_STATE_PLAYING);
-		 //gst_message_unref(data.toggle_msg);
 	 }
 	 } while (enabled);
 				
-    //gst_object_unref(data.toggle_message);
-    //gst_object_unref(data.snapshot_message);
+    gst_message_unref(msg);
     gst_object_unref(bus);
     gst_element_release_request_pad(tee, tee_stream_pad);
     gst_element_release_request_pad(tee, tee_snapshot_pad);
@@ -267,9 +265,7 @@ int main(int argc, char *argv[])
     gst_object_unref(tee_snapshot_pad);
     gst_element_set_state(data.pipeline, GST_STATE_NULL);
     gst_object_unref(data.pipeline);
-   
+    gpiod_edge_event_buffer_free(data.edge_event_buffer);
     gpiod_line_request_release(gpio_req);
     return 0;
 }
-
-static void handle_request(GstElement *pipeline);

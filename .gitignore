@@ -1,3 +1,5 @@
 build/
 install/
 log/
+cam_app/camera_stream
+cam_app/images/
