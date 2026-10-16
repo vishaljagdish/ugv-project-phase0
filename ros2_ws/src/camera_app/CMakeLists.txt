@@ -8,6 +8,12 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(PkgConfig REQUIRED)
+find_package(std_srvs REQUIRED)
+
+pkg_check_modules(GSTREAMER REQUIRED IMPORTED_TARGET
+	gstreamer-1.0
+)
 
 add_executable(camera_node src/camera_node.cpp)
 target_include_directories(camera_node PUBLIC
@@ -16,7 +22,11 @@ target_include_directories(camera_node PUBLIC
 target_compile_features(camera_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 ament_target_dependencies(
   camera_node
-  "rclcpp"
+  "rclcpp" "std_srvs"
+)
+
+target_link_libraries(camera_node
+	PkgConfig::GSTREAMER
 )
 
 install(TARGETS camera_node
