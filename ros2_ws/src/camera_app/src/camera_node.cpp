@@ -2,8 +2,15 @@
 #include <gst/gst.h>
 #include "std_srvs/srv/trigger.hpp"
 
+#include <cstdio>
+
 using std::placeholders::_1;
 using std::placeholders::_2;
+
+int width = 800;
+int height = 600;
+int framerate = 30;
+char filter_params[64];
 
 static const rclcpp::Logger LOGGER = rclcpp::get_logger("camera_node");
 
@@ -11,6 +18,10 @@ class CameraNode : public rclcpp::Node
 {
 	public:
 		CameraNode() : Node("camera_node") {
+			this->declare_parameter("width", width);
+			this->declare_parameter("height", height);
+			this->declare_parameter("framerate", framerate);
+
 			pipeline = gst_pipeline_new("camera_pipeline");
 			stream_src = gst_element_factory_make("libcamerasrc", nullptr);
 			tee = gst_element_factory_make("tee", nullptr);
@@ -24,7 +35,9 @@ class CameraNode : public rclcpp::Node
 				throw std::runtime_error("not all elements could be created.\n");
 			}
 
-			GstCaps *stream_caps = gst_caps_from_string("video/x-raw,format=NV12,width=800,height=600,framerate=30/1");
+			std::snprintf(filter_params, sizeof(filter_params), "video/x-raw,format=NV12,width=%ld,height=%ld,framerate=%ld/1", 
+					this->get_parameter("width").as_int(), this->get_parameter("height").as_int(), this->get_parameter("framerate").as_int());
+			GstCaps *stream_caps = gst_caps_from_string(filter_params);
 			g_object_set(filter, "caps", stream_caps, nullptr);
 			gst_caps_unref(stream_caps);
 

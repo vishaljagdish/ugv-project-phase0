@@ -29,6 +29,10 @@ target_link_libraries(camera_node
 	PkgConfig::GSTREAMER
 )
 
+install(DIRECTORY launch
+	DESTINATION share/${PROJECT_NAME}
+)
+
 install(TARGETS camera_node
   DESTINATION lib/${PROJECT_NAME})
 
