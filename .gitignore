@@ -3,3 +3,4 @@ install/
 log/
 cam_app/camera_stream
 cam_app/images/
+src/cspc_lidar_sdk_ros2/
