@@ -11,9 +11,7 @@
 using std::placeholders::_1;
 using std::placeholders::_2;
 
-int width = 800;
-int height = 600;
-int framerate = 30;
+char host[] = "192.168.50.10";
 char filter_params[64];
 char filename[100];
 FILE *fp;
@@ -57,6 +55,7 @@ class CameraNode : public rclcpp::Node
 			this->declare_parameter("width", width);
 			this->declare_parameter("height", height);
 			this->declare_parameter("framerate", framerate);
+			this->declare_parameter("host", host);
 
 			pipeline = gst_pipeline_new("camera_pipeline");
 			stream_src = gst_element_factory_make("libcamerasrc", nullptr);
@@ -83,7 +82,7 @@ class CameraNode : public rclcpp::Node
 			gst_caps_unref(stream_caps);
 
 			g_object_set(stream_enc, "tune", 0x00000004, "speed-preset", 1, nullptr);
-			g_object_set(stream_sink, "host", "192.168.50.10", "port", 5000, "sync", false, nullptr);
+			g_object_set(stream_sink, "host", this->get_parameter("host").as_string().c_str(), "port", 5000, "sync", false, nullptr);
 			g_object_set(capture_enc, "snapshot", false, nullptr);
 			g_object_set(capture_sink, "max-buffers", 0, "emit-signals", true, "drop", true, nullptr);
 
@@ -199,6 +198,9 @@ class CameraNode : public rclcpp::Node
 		GstSample *sample;
 		GstBuffer *buf;
 		GstState pipeline_state;
+		int width = 800;
+		int height = 600;
+		int framerate = 30;
 };
 
 int main(int argc, char **argv) 

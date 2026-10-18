@@ -9,6 +9,7 @@ def launch_setup(context, *args, **kwargs):
     width = LaunchConfiguration("width");
     height = LaunchConfiguration("height");
     framerate = LaunchConfiguration("framerate");
+    host = LaunchConfiguration("host");
 
     camera_node = Node(
             package='camera_app',
@@ -17,6 +18,7 @@ def launch_setup(context, *args, **kwargs):
                     "width": width,
                     "height": height,
                     "framerate": framerate,
+                    "host": host,
                 }],
             )
 
@@ -48,6 +50,14 @@ def generate_launch_description():
                 "framerate",
                 default_value="30",
                 description="",
+            )
+        )
+
+    declared_arguments.append(
+            DeclareLaunchArgument(
+                "host",
+                default_value="192.168.50.10",
+                description="Camera livestream destination address"
             )
         )
 
