@@ -8,15 +8,17 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
-add_executable(motor_driver_node src/motor_driver_node.cpp)
+add_executable(motor_driver_node src/motor_driver_node.cpp src/motor_driver_node_main.cpp)
 target_include_directories(motor_driver_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
 target_compile_features(motor_driver_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 ament_target_dependencies(
   motor_driver_node
-  "rclcpp"
+  "rclcpp" "std_srvs" "geometry_msgs"
 )
 
 install(TARGETS motor_driver_node

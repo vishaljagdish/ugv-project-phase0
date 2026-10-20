@@ -1,28 +1,12 @@
-//Node to communicate with Motor Driver Board via U(S)ART. Sends speed/pwm commands, Publishes Encoder Data
-//Author: Vishal Jagdish
+#include "motor_driver.hpp"
 
+static const rclcpp::Logger LOGGER = rclcpp::get_logger("motor_driver_node");
 
-#include "rclcpp/rclcpp.hpp"
-
-#include <termios.h>
-
-//implement node as rclcpp::LifecycleNode
-
-class MotorDriverNode : public rclcpp::Node 
+MotorDriverNode::MotorDriverNode() : Node("motor_driver_node") 
 {
-	public:
-		MotorDriverNode() : Node("motor_driver_node") {}
-		~MotorDriverNode() {}
-	private:
-		//create publisher, subscriber, define callbacks
-		//cerate struct to store uart device info
+	RCLCPP_INFO(LOGGER, "Hello Motor Driver Node\n");
+}
 
-};
-
-int main(int argc, char ** argv)
+MotorDriverNode::~MotorDriverNode()
 {
-	rclcpp::init(argc, argv);
-	rclcpp::spin(std::make_shared<MotorDriverNode>());
-	rclcpp::shutdown();
-	return 0;
 }
