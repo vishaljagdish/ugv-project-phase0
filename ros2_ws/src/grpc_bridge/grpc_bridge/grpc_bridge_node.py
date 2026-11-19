@@ -4,6 +4,7 @@
 import rclpy
 from rclpy.node import Node
 from std_srvs.srv import Trigger
+from rover_msgs.srv import Capture
 from concurrent import futures
 from threading import Event
 import logging
@@ -15,6 +16,7 @@ class BridgeNode(Node):
     def __init__(self):
         super().__init__('grpc_bridge_node');
         self.toggle_client = self.create_client(Trigger, 'toggle_stream')
+        self.capture_client = self.create_client(Capture, 'capture_snapshot')
 
     def call_service(self, client, request, timeout): #helper: calls request asynchronously
         if not client.service_is_ready():

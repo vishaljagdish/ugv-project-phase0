@@ -4,6 +4,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include <gst/gst.h>
 #include "std_srvs/srv/trigger.hpp"
+#include "rover_msgs/srv/capture.hpp"
 
 #include <cstdio>
 #include <ctime>
@@ -118,7 +119,9 @@ class CameraNode : public rclcpp::Node
 			toggle_service = create_service<std_srvs::srv::Trigger>("toggle_stream", std::bind(&CameraNode::toggle_service_cb, this, _1, _2));
 			RCLCPP_INFO(LOGGER, "created toggle service.\n");
 			snapshot_service = create_service<std_srvs::srv::Trigger>("capture", std::bind(&CameraNode::snapshot_service_cb, this, _1, _2));
-			RCLCPP_INFO(LOGGER, "created capture service.\n");		
+			RCLCPP_INFO(LOGGER, "created capture service.\n");
+			capture_service = create_service<rover_msgs::srv::Capture>("capture_snapshot", std::bind(&CameraNode::capture_service_cb, this, _1, _2));
+			RCLCPP_INFO(LOGGER, "created new capture service.\n");		
 		}
 
 		~CameraNode() {
@@ -180,8 +183,46 @@ class CameraNode : public rclcpp::Node
 
 		}
 
+		void capture_service_cb(const std::shared_ptr<rover_msgs::srv::Capture::Request> request, 
+				std::shared_ptr<rover_msgs::srv::Capture::Response> response)
+		{
+			std::vector<uint8_t> data;
+
+			gst_element_get_state(pipeline, &pipeline_state, nullptr, 0);
+
+			if (pipeline_state == GST_STATE_PLAYING) {
+				RCLCPP_INFO(LOGGER, "new capture request received.\n");
+				g_object_get(capture_sink, "last_sample", &sample, NULL);
+				if (sample) {
+					buf = gst_sample_get_buffer(sample);
+					GstMapInfo map;
+
+					if (gst_buffer_map(buf, &map, GST_MAP_READ))
+					{
+						response->image.data.assign(map.data, map.data + map.size);
+						response->image.format = "jpg";
+						response->success = true;
+						response->message = "capture success.";	
+						gst_buffer_unmap(buf, &map);
+					} else {
+						response->success = false;
+						response->message = "capture fail.";
+					}
+					//response->success = true;
+					//response->message = "capture saved to disk.";
+				}
+			} else {
+				RCLCPP_WARN(LOGGER, "cannot capture frame, stream is not running.\n");
+				response->success = false;
+				response->message = "stream is not running";
+			}
+
+
+		}
+
 		rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr toggle_service;
 		rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr snapshot_service;
+		rclcpp::Service<rover_msgs::srv::Capture>::SharedPtr capture_service;
 		GstElement *pipeline;
 		GstElement *stream_src;
 		GstElement *tee;
