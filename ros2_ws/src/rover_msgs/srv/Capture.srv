@@ -1,0 +1,7 @@
+#Capture.srv
+
+---
+bool success
+string message
+sensor_msgs/CompressedImage image
+
