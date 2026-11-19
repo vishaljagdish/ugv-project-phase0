@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package rover;
+
+service ToggleStream {
+	rpc Toggle (Trigger) returns (ToggleResponse);
+}
+
+service Snapshot {
+	rpc Capture (Trigger) returns (CaptureResponse);
+}
+
+message Trigger {
+	bool trigger = 1;
+}
+
+message ToggleResponse {
+	bool success = 1;
+	string message = 2;
+}
+
+message CaptureResponse {
+	bool success = 1;
+	bytes image_data = 2;
+	uint64 timestamp = 3;
+	string message = 4;
+}
+
