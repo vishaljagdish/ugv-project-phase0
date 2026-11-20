@@ -4,12 +4,13 @@ from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 
 def launch_setup(context, *args, **kwargs):
-    print("Start launch_setup");
+    print("Start launch_setup")
 
-    width = LaunchConfiguration("width");
-    height = LaunchConfiguration("height");
-    framerate = LaunchConfiguration("framerate");
-    host = LaunchConfiguration("host");
+    width = LaunchConfiguration("width")
+    height = LaunchConfiguration("height")
+    framerate = LaunchConfiguration("framerate")
+    host = LaunchConfiguration("host")
+    bitrate = LaunchConfiguration("bitrate")
 
     camera_node = Node(
             package='camera_app',
@@ -19,6 +20,7 @@ def launch_setup(context, *args, **kwargs):
                     "height": height,
                     "framerate": framerate,
                     "host": host,
+                    "bitrate": bitrate,
                 }],
             )
 
@@ -60,5 +62,14 @@ def generate_launch_description():
                 description="Camera livestream destination address"
             )
         )
+
+    declared_arguments.append(
+            DeclareLaunchArgument(
+                "bitrate",
+                default_value = "4000",
+                description="Bitrate in kbit/sec"
+            )
+        )
+
 
     return LaunchDescription(declared_arguments + [OpaqueFunction(function=launch_setup)])

@@ -40,15 +40,20 @@ class ToggleStream(rover_pb2_grpc.ToggleStreamServicer):
         return rover_pb2.ToggleResponse(success = resp.success, message = resp.message)
 
 class Snapshot(rover_pb2_grpc.SnapshotServicer):
+    def __init__(self, node):
+        self.node = node
+
     def Capture(self, request, context):
-        print("processing captture request")
-        return rover_pb2.CaptureResponse(success = True, message="captured snapshot")
+        print("processing capture request")
+        resp, err = self.node.call_service(self.node.capture_client, Capture.Request(), 1)
+        return rover_pb2.CaptureResponse(success = resp.success, message=resp.message, format=resp.image.format, image_data=bytes(resp.image.data))
 
 def main(args=None):
     rclpy.init(args=args)
     node = BridgeNode()
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     rover_pb2_grpc.add_ToggleStreamServicer_to_server(ToggleStream(node), server)
+    rover_pb2_grpc.add_SnapshotServicer_to_server(Snapshot(node), server)
     server.add_insecure_port("192.168.50.69:50051")
     server.start()
     print("server started, listening on 50051")

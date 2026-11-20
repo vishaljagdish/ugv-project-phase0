@@ -23,6 +23,7 @@ message CaptureResponse {
 	bool success = 1;
 	bytes image_data = 2;
 	uint64 timestamp = 3;
-	string message = 4;
+	string format = 4;
+	string message = 5;
 }
 

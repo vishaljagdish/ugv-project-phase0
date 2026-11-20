@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='grpc_bridge/rover.proto',
   package='rover',
   syntax='proto3',
-  serialized_pb=_b('\n\x17grpc_bridge/rover.proto\x12\x05rover\"\x1a\n\x07Trigger\x12\x0f\n\x07trigger\x18\x01 \x01(\x08\"2\n\x0eToggleResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"Z\n\x0f\x43\x61ptureResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x12\n\nimage_data\x18\x02 \x01(\x0c\x12\x11\n\ttimestamp\x18\x03 \x01(\x04\x12\x0f\n\x07message\x18\x04 \x01(\t2?\n\x0cToggleStream\x12/\n\x06Toggle\x12\x0e.rover.Trigger\x1a\x15.rover.ToggleResponse2=\n\x08Snapshot\x12\x31\n\x07\x43\x61pture\x12\x0e.rover.Trigger\x1a\x16.rover.CaptureResponseb\x06proto3')
+  serialized_pb=_b('\n\x17grpc_bridge/rover.proto\x12\x05rover\"\x1a\n\x07Trigger\x12\x0f\n\x07trigger\x18\x01 \x01(\x08\"2\n\x0eToggleResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"j\n\x0f\x43\x61ptureResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x12\n\nimage_data\x18\x02 \x01(\x0c\x12\x11\n\ttimestamp\x18\x03 \x01(\x04\x12\x0e\n\x06\x66ormat\x18\x04 \x01(\t\x12\x0f\n\x07message\x18\x05 \x01(\t2?\n\x0cToggleStream\x12/\n\x06Toggle\x12\x0e.rover.Trigger\x1a\x15.rover.ToggleResponse2=\n\x08Snapshot\x12\x31\n\x07\x43\x61pture\x12\x0e.rover.Trigger\x1a\x16.rover.CaptureResponseb\x06proto3')
 )
 
 
@@ -123,8 +123,15 @@ _CAPTURERESPONSE = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='message', full_name='rover.CaptureResponse.message', index=3,
+      name='format', full_name='rover.CaptureResponse.format', index=3,
       number=4, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='message', full_name='rover.CaptureResponse.message', index=4,
+      number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -142,7 +149,7 @@ _CAPTURERESPONSE = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=114,
-  serialized_end=204,
+  serialized_end=220,
 )
 
 DESCRIPTOR.message_types_by_name['Trigger'] = _TRIGGER
@@ -179,8 +186,8 @@ _TOGGLESTREAM = _descriptor.ServiceDescriptor(
   file=DESCRIPTOR,
   index=0,
   options=None,
-  serialized_start=206,
-  serialized_end=269,
+  serialized_start=222,
+  serialized_end=285,
   methods=[
   _descriptor.MethodDescriptor(
     name='Toggle',
@@ -203,8 +210,8 @@ _SNAPSHOT = _descriptor.ServiceDescriptor(
   file=DESCRIPTOR,
   index=1,
   options=None,
-  serialized_start=271,
-  serialized_end=332,
+  serialized_start=287,
+  serialized_end=348,
   methods=[
   _descriptor.MethodDescriptor(
     name='Capture',

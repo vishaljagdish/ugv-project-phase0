@@ -57,6 +57,7 @@ class CameraNode : public rclcpp::Node
 			this->declare_parameter("height", height);
 			this->declare_parameter("framerate", framerate);
 			this->declare_parameter("host", host);
+			this->declare_parameter("bitrate", bitrate);
 
 			pipeline = gst_pipeline_new("camera_pipeline");
 			stream_src = gst_element_factory_make("libcamerasrc", nullptr);
@@ -82,10 +83,10 @@ class CameraNode : public rclcpp::Node
 			g_object_set(filter, "caps", stream_caps, nullptr);
 			gst_caps_unref(stream_caps);
 
-			g_object_set(stream_enc, "tune", 0x00000004, "speed-preset", 1, nullptr);
+			g_object_set(stream_enc, "bitrate", this->get_parameter("bitrate").as_int(), "tune", 0x00000004, "speed-preset", 3, "key-int-max", 30, nullptr);
 			g_object_set(stream_sink, "host", this->get_parameter("host").as_string().c_str(), "port", 5000, "sync", false, nullptr);
 			g_object_set(capture_enc, "snapshot", false, nullptr);
-			g_object_set(capture_sink, "max-buffers", 0, "emit-signals", true, "drop", true, nullptr);
+			g_object_set(capture_sink, "max-buffers", 1, "emit-signals", false, "drop", true, nullptr);
 
 			gst_bin_add_many(GST_BIN(pipeline), stream_src, filter, tee, stream_q, stream_enc, payloader, stream_sink, capture_q, convert, capture_enc, capture_sink, nullptr);
 			if (!gst_element_link_many(stream_src, filter, tee, nullptr) || !gst_element_link_many(stream_q, stream_enc, payloader, stream_sink, nullptr)
@@ -173,6 +174,7 @@ class CameraNode : public rclcpp::Node
 					} else {
 						response->success = true;
 						response->message = "capture sucess";
+						gst_sample_unref(sample);
 					}
 				}
 			} else {
@@ -204,6 +206,7 @@ class CameraNode : public rclcpp::Node
 						response->success = true;
 						response->message = "capture success.";	
 						gst_buffer_unmap(buf, &map);
+						gst_sample_unref(sample);
 					} else {
 						response->success = false;
 						response->message = "capture fail.";
@@ -242,6 +245,7 @@ class CameraNode : public rclcpp::Node
 		int width = 800;
 		int height = 600;
 		int framerate = 30;
+		int bitrate = 4000;
 };
 
 int main(int argc, char **argv) 
