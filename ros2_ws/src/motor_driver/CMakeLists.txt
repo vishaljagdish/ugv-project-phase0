@@ -11,6 +11,16 @@ find_package(rclcpp REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 
+# ROS-free core: hardware access and board protocol, no rclcpp.
+# Static library linked into the node (and later into unit tests).
+add_library(motor_driver_core STATIC
+  src/uart_interface.cpp
+)
+target_include_directories(motor_driver_core PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+target_compile_features(motor_driver_core PUBLIC cxx_std_17)
+
 add_executable(motor_driver_node src/motor_driver_node.cpp src/motor_driver_node_main.cpp)
 target_include_directories(motor_driver_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -20,6 +30,7 @@ ament_target_dependencies(
   motor_driver_node
   "rclcpp" "std_srvs" "geometry_msgs"
 )
+target_link_libraries(motor_driver_node motor_driver_core)
 
 install(TARGETS motor_driver_node
   DESTINATION lib/${PROJECT_NAME})
