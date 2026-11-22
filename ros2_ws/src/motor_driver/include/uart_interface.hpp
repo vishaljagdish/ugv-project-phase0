@@ -9,19 +9,20 @@
 #include <iostream>
 #include <errno.h>
 #include <unistd.h>
+#include <string>
 
 class UartDevice {
 	public:
-		UartDevice(char *filename, int baudrate);
+		UartDevice(std::string filename, speed_t baudrate);
 		~UartDevice();
 		UartDevice(const UartDevice& dev) = delete;
 		UartDevice& operator=(const UartDevice& dev) = delete;
 	private:
-		int writeData(char *buf, size_t len);
-		int writeString(char *string);
-		int readData(char *buf, size_t len);
-		char *filename_;
-		int baudrate_;
+		int writeData(const uint8_t *data, size_t len);
+		int writeString(std::string_view s);
+		int readData(uint8_t *buf, size_t len);
+		std::string filename_;
+		speed_t baudrate_;
 		int fd_ = -1;
 };
 
